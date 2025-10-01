@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Search from './components/search';
 import Spinner from './components/spinner';
 import MovieCard from './components/MovieCard';
 import { useDebounce } from 'react-use';
+import { logSearch } from './hooks/analytics';
+import type { Movie, TMDBResponse } from './types';
+import DetailView from './components/moviedetails';
 
 const API_BASE_URL = 'https://api.themoviedb.org/3';
 
-const API_KEY = import.meta.env.VITE_TMDB_API_KEY;
+const API_KEY = import.meta.env.VITE_TMDB_API_KEY as string;
 
 const API_OPTIONSS = {
   method: 'GET',
@@ -17,11 +20,13 @@ const API_OPTIONSS = {
 };
 
 const App = () => {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [errorMessage, setErrorMessage] = useState('');
-  const [movieList, setMovieList] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState<string>('');
+  const [errorMessage, setErrorMessage] = useState<string>('');
+  const [movieList, setMovieList] = useState<Movie[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState<string>('');
+  const dialogRef = useRef<HTMLDialogElement | null>(null);
+  const [moviDetails, setMoviDetails] = useState<string>('');
 
   useDebounce(() => setDebouncedSearchTerm(searchTerm), 500, [searchTerm]);
 
@@ -32,7 +37,12 @@ const App = () => {
     fetchMovies(debouncedSearchTerm);
   }, [debouncedSearchTerm]);
 
-  const fetchMovies = async (searchQuery) => {
+  useEffect(() => {
+    if (!moviDetails) return;
+    dialogRef.current?.showModal();
+  }, [moviDetails]);
+
+  const fetchMovies = async (searchQuery: string): Promise<void> => {
     try {
       let endpoint = `${API_BASE_URL}/discover/movie?include_adult=false&include_video=false&language=en-US&page=1&sort_by=popularity.desc`;
       if (searchQuery) {
@@ -44,9 +54,13 @@ const App = () => {
       if (!response.ok) {
         throw new Error('failed to read movies');
       }
-      const data = await response.json();
-      setMovieList(() => [...data.results]);
+      const data: TMDBResponse = await response.json();
+      setMovieList(data.results);
       setIsLoading(false);
+      // Log search analytics if it's a search query
+      // if (searchQuery && searchQuery.trim()) {
+      //   await logSearch(searchQuery, data.results.length,);
+      // }
     } catch (error) {
       console.log(`Error fetching movies :${error}`);
       setErrorMessage('Error fetching movies please try again later...');
@@ -66,7 +80,11 @@ const App = () => {
           <Search searchTerm={searchTerm} setSearchTerm={setSearchTerm} />
         </header>
         <section className="all-movies">
+          <h2>Top 10 movies</h2>
           <h2>All movies</h2>
+          <dialog ref={dialogRef}>
+            <h3>{moviDetails}</h3>
+          </dialog>
           {isLoading ? (
             <Spinner />
           ) : errorMessage ? (
@@ -81,7 +99,12 @@ const App = () => {
               ))} */
 
                 movieList.map((m) => (
-                  <MovieCard key={m.id} movie={m}></MovieCard>
+                  <button
+                    key={m.id}
+                    onClick={() => setMoviDetails(JSON.stringify(m))}
+                  >
+                    <MovieCard key={m.id} movie={m}></MovieCard>
+                  </button>
                 ))
               }
             </ul>
